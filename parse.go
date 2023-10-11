@@ -7,13 +7,9 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-type Config struct {
-	Nvim Action `toml:"nvim"`
-}
-
-func (c Config) String() string {
-	return fmt.Sprintf("Vim: {%s}", c.Nvim)
-}
+// func (c Config) String() string {
+// 	return fmt.Sprintf("Vim: {%s}", c.Nvim)
+// }
 
 type Action struct {
 	ActionType string `toml:"action"`
@@ -23,7 +19,6 @@ type Action struct {
 type Result interface{}
 
 func ParseConfig(path string) ([]Result, error) {
-	var config Config
 
 	// Load and unmarshal the TOML file
 	file, err := os.Open(path)
@@ -31,11 +26,14 @@ func ParseConfig(path string) ([]Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	config := map[string]Action{}
 	// Read file into res
 	reader := toml.NewDecoder(file)
 	reader.Decode(&config)
 	// Print config
-	println(config)
+	for key, value := range config {
+		fmt.Println(key, value)
+	}
 
 	return nil, nil
 }
