@@ -2,38 +2,37 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"log"
 
-	"github.com/pelletier/go-toml/v2"
+	"github.com/BurntSushi/toml"
 )
 
-// func (c Config) String() string {
-// 	return fmt.Sprintf("Vim: {%s}", c.Nvim)
-// }
-
-type Action struct {
-	ActionType string `toml:"action"`
-	Dest       string `toml:"dest,omitempty"`
+type Symlink struct {
+	Source string `toml:"source"`
+	Target string `toml:"target"`
 }
 
-type Result interface{}
+type Cmd struct {
+	Cmd string
+}
 
-func ParseConfig(path string) ([]Result, error) {
+type Config struct {
+	Symlinks map[string]Symlink
+	// Cmds     map[string]Cmd
+}
 
-	// Load and unmarshal the TOML file
-	file, err := os.Open(path)
-	defer file.Close()
-	if err != nil {
-		return nil, err
+// Function to pretty print a config
+func (c Config) String() string {
+	return fmt.Sprintf("Symlinks: %s\n", c.Symlinks)
+}
+
+func ParseConfig(configPath string) (Config, error) {
+	log.Printf("Parsing config: %s\n", configPath)
+	var config Config
+	if _, err := toml.DecodeFile(configPath, &config); err != nil {
+		log.Fatal(err)
+		return config, err
 	}
-	config := map[string]Action{}
-	// Read file into res
-	reader := toml.NewDecoder(file)
-	reader.Decode(&config)
-	// Print config
-	for key, value := range config {
-		fmt.Println(key, value)
-	}
 
-	return nil, nil
+	return config, nil
 }

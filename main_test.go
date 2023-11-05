@@ -4,17 +4,15 @@ import (
 	"testing"
 )
 
-var base = "/tmp"
-var hostname = "host"
-
-func TestGetConfigPath(t *testing.T) {
-	_, err := GetConfigPath(base, hostname)
+func TestParseConfig(t *testing.T) {
+	configPath := "test/test_config.toml"
+	config, err := ParseConfig(configPath)
 	if err != nil {
-		t.Error(err)
+		t.Errorf("Error parsing config: %s", err)
 	}
-}
-
-func TestLoadConfig(t *testing.T) {
-	conf, _ := GetConfigPath(base, hostname)
-	ParseConfig(conf)
+	// Preppty print the config
+	t.Log(config)
+	if len(config.Symlinks) != 2 {
+		t.Errorf("Expected 2 symlinks, got %d", len(config.Symlinks))
+	}
 }
