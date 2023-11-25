@@ -10,7 +10,6 @@ func TestParseConfig(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error parsing config: %s", err)
 	}
-	// Preppty print the config
 	t.Log(config)
 	if len(config.Symlinks) != 2 {
 		t.Errorf("Expected 2 symlinks, got %d", len(config.Symlinks))

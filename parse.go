@@ -12,18 +12,23 @@ type Symlink struct {
 	Target string `toml:"target"`
 }
 
-type Cmd struct {
-	Cmd string
-}
-
 type Config struct {
 	Symlinks map[string]Symlink
-	// Cmds     map[string]Cmd
 }
 
 // Function to pretty print a config
 func (c Config) String() string {
-	return fmt.Sprintf("Symlinks: %s\n", c.Symlinks)
+	return fmt.Sprintf("Symlinks: %v\n", c.Symlinks)
+}
+
+type Simple struct {
+	Cmd string `toml:"cmd"`
+	Sudo bool `toml:"sudo" default:"false"`
+	Check string `toml:"check"`
+}
+
+type InstallConfig struct {
+	Simples map[string]Simple
 }
 
 func ParseConfig(configPath string) (Config, error) {
@@ -33,6 +38,15 @@ func ParseConfig(configPath string) (Config, error) {
 		log.Fatal(err)
 		return config, err
 	}
+	return config, nil
+}
 
+func ParseInstallConfig(configPath string) (InstallConfig, error) {
+	log.Printf("Parsing install config: %s\n", configPath)
+	var config InstallConfig
+	if _, err := toml.DecodeFile(configPath, &config); err != nil {
+		log.Fatal(err)
+		return config, err
+	}
 	return config, nil
 }
