@@ -111,10 +111,7 @@ func ExecCmd(cmd string, sudo bool) error {
 	if sudo {
 		cmd = "sudo " + cmd
 	}
-	cmdParts := strings.Split(cmd, " ")
-	cmdName := cmdParts[0]
-	cmdArgs := cmdParts[1:]
-	err := Exec(cmdName, cmdArgs)
+	err := Exec("bash", []string{"-c", cmd})
 	if err != nil {
 		log.Printf("Error executing command: %s", err)
 		return err
@@ -124,7 +121,7 @@ func ExecCmd(cmd string, sudo bool) error {
 
 // Check return status is 0
 func CheckIsInstalled(check string) bool {
-	cmdParts := []string{"sh", "-c", check}
+	cmdParts := []string{"bash", "-c", check}
 	log.Printf("Checking %s command\n", cmdParts)
 	cmdName := cmdParts[0]
 	cmdArgs := cmdParts[1:]
