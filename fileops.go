@@ -18,11 +18,12 @@ func CreateSymlink(source, target string) error {
 		return err
 	}
 	if _, err := os.Stat(source); !os.IsNotExist(err) {
-		log.Printf("Warning: Symlink %s already exists, removing\n", source)
-		err := RemoveFile(source)
-		if err != nil {
-			return err
-		}
+		log.Printf("Warning: Symlink %s already exists, skipping\n", source)
+		return nil
+		// err := RemoveFile(source)
+		// if err != nil {
+		// 	return err
+		// }
 	}
 	// Create the symlink directory with parents if it doesn't exist
 	err := os.MkdirAll(path.Dir(source), 0755)
