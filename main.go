@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -13,7 +14,7 @@ import (
 
 // Builds a config and checks if it exists
 func GetConfigPath(base string, hostname string, filename string) (string, error) {
-	configPath := path.Join(base, hostname, filename)
+	configPath := path.Join(base, "hosts", hostname, filename)
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		log.Printf("Error: Config %s does not exist\n", configPath)
 		return "", err
@@ -21,7 +22,7 @@ func GetConfigPath(base string, hostname string, filename string) (string, error
 	return configPath, nil
 }
 
-func ExpandPath(path string) (string, error) {
+func ExpandHomeDir(path string) (string, error) {
 	usr, err := user.Current()
 	if err != nil {
 		return "", err
@@ -48,6 +49,50 @@ func GetFiles(target string) ([]string, error) {
 	return files, nil
 }
 
+func isExistingDir(path string) bool {
+	fi, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return fi.IsDir()
+}
+
+func processSymlinkDir(symlink Symlink) error {
+	files, err := GetFiles(symlink.Target)
+	if err != nil {
+		return err
+	}
+	for _, subTarget := range files {
+		relPath, err := filepath.Rel(symlink.Target, subTarget)
+		if err != nil {
+			return err
+		}
+		subName := path.Join(symlink.Name, relPath)
+		err = Symlink{subName, subTarget}.Create()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func processSymlink(base string, symlink Symlink) error {
+	symlink, err := symlink.ExpandPaths(base)
+	if err != nil {
+		log.Printf("Error expanding symlink %s", err)
+		return err
+	}
+	if !symlink.IsTargetExists() {
+		return fmt.Errorf("Target %s does not exist", symlink.Target)
+	}
+	if isExistingDir(symlink.Target) {
+		err = processSymlinkDir(symlink)
+	} else {
+		err = symlink.Create()
+	}
+	return err
+}
+
 func ConfigFunc(base string, hostname string) error {
 	configPath, err := GetConfigPath(base, hostname, "config.toml")
 	if err != nil {
@@ -55,37 +100,12 @@ func ConfigFunc(base string, hostname string) error {
 		return err
 	}
 	config, err := ParseConfig(configPath)
+	if err != nil {
+		log.Printf("Error parsing config: %s", err)
+		return err
+	}
 	for _, symlink := range config.Symlinks {
-		target := path.Join(base, symlink.Target)
-		if _, err := os.Stat(target); os.IsNotExist(err) {
-			log.Printf("Error: Target %s does not exist\n", target)
-			return err
-		}
-		source, err := ExpandPath(symlink.Source)
-		if err != nil {
-			log.Printf("Error expanding path: %s", err)
-			return err
-		}
-		if fi, err := os.Stat(target); err == nil && fi.IsDir() {
-			files, err := GetFiles(target)
-			if err != nil {
-				return err
-			}
-			for _, file := range files {
-				relPath, err := filepath.Rel(target, file)
-				if err != nil {
-					return err
-				}
-				sourcePath := path.Join(source, relPath)
-				err = CreateSymlink(sourcePath, file)
-				if err != nil {
-					return err
-				}
-			}
-		} else {
-			err = CreateSymlink(source, target)
-
-		}
+		err := processSymlink(base, symlink)
 		if err != nil {
 			return err
 		}
@@ -155,22 +175,44 @@ func InstallFunc(base string, hostname string) error {
 	return nil
 }
 
+func assertHostnameMatches(hostname string) {
+	if hostname == "common" {
+		log.Println("Skipping hostname check for common")
+		return
+	}
+	cmd := exec.Command("hostname")
+	out, err := cmd.Output()
+	if err != nil {
+		log.Printf("Error getting hostname: %s", err)
+		os.Exit(1)
+	}
+	if strings.TrimSpace(string(out)) != hostname {
+		log.Printf("Error: Hostname does not match, expected %s, got %s", hostname, string(out))
+		os.Exit(1)
+	}
+}
+
 func main() {
-	log.Printf("Starting dotfiles install")
+	log.Printf("Started")
 	base := os.Getenv("HOME") + "/dotfiles"
-	cmd := os.Args[1]
-	hostname := os.Args[2]
+	command := flag.String("command", "config", "Either install or config")
+	hostname := flag.String("host", "", "Hostname to run command on")
+	flag.Parse()
+	if *hostname == "" {
+		log.Printf("Error: Hostname is required")
+		os.Exit(1)
+	}
+	assertHostnameMatches(*hostname)
 	err := error(nil)
-	if cmd == "install" {
-		log.Printf("Running install for hostname: %s", hostname)
-		err = InstallFunc(base, hostname)
-	} else if cmd == "config" {
-		log.Printf("Running config for hostname: %s", hostname)
-		err = ConfigFunc(base, hostname)
+	if *command == "install" {
+		log.Println("Installing")
+		err = InstallFunc(base, *hostname)
+	} else if *command == "config" {
+		log.Println("Configuring")
+		err = ConfigFunc(base, *hostname)
 	}
 	if err != nil {
 		log.Fatal(err)
-		os.Exit(1)
 	}
-	log.Printf("Finished Installer")
+	log.Printf("Done")
 }

@@ -7,10 +7,6 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-type Symlink struct {
-	Source string `toml:"source"`
-	Target string `toml:"target"`
-}
 
 type Config struct {
 	Symlinks map[string]Symlink
@@ -22,8 +18,8 @@ func (c Config) String() string {
 }
 
 type Simple struct {
-	Cmd string `toml:"cmd"`
-	Sudo bool `toml:"sudo" default:"false"`
+	Cmd   string `toml:"cmd"`
+	Sudo  bool   `toml:"sudo" default:"false"`
 	Check string `toml:"check"`
 }
 
@@ -37,6 +33,14 @@ func ParseConfig(configPath string) (Config, error) {
 	if _, err := toml.DecodeFile(configPath, &config); err != nil {
 		log.Fatal(err)
 		return config, err
+	}
+	for k, v := range config.Symlinks {
+		if v.Name == "" {
+			return config, fmt.Errorf("Symlink %s has no name", k)
+		}
+		if v.Target == "" {
+			return config, fmt.Errorf("Symlink %s has no target", k)
+		}
 	}
 	return config, nil
 }
