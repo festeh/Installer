@@ -1,0 +1,11 @@
+[symlinks.zsh]
+source = "zsh/zshrc"
+target = "~/.zshrc"
+
+[symlinks.nvim]
+source = "nvim"
+target = "~/.config/nvim"
+
+[symlinks.tmp]
+source = "/tmp/foo/tmp"
+target = "/top/bar.txt"
