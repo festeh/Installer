@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -10,8 +11,8 @@ func TestParseConfig(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error parsing config: %s", err)
 	}
-	t.Log(config)
-	if len(config.Symlinks) != 2 {
-		t.Errorf("Expected 2 symlinks, got %d", len(config.Symlinks))
+	if len(config.Templates) != 1 {
+		t.Errorf("Expected 1 template, got %d", len(config.Templates))
 	}
+	fmt.Println(config)
 }

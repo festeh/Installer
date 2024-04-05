@@ -7,14 +7,17 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-
 type Config struct {
-	Symlinks map[string]Symlink
+	Symlinks  map[string]Symlink
+	Templates map[string]Template
 }
 
 // Function to pretty print a config
 func (c Config) String() string {
-	return fmt.Sprintf("Symlinks: %v\n", c.Symlinks)
+	res := `Symlinks: %v
+Templates: %v
+	`
+	return fmt.Sprintf(res, c.Symlinks, c.Templates)
 }
 
 type Simple struct {

@@ -1,11 +1,17 @@
 [symlinks.zsh]
-source = "zsh/zshrc"
+namr = "zsh/zshrc"
 target = "~/.zshrc"
 
 [symlinks.nvim]
-source = "nvim"
+name = "nvim"
 target = "~/.config/nvim"
 
 [symlinks.tmp]
-source = "/tmp/foo/tmp"
+name = "/tmp/foo/tmp"
 target = "/top/bar.txt"
+
+[templates.foobar]
+name = "foo"
+target = "bar"
+key1 = "value1"
+key2 = "value2"
