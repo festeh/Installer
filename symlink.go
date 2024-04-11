@@ -5,14 +5,15 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 )
 
-type Symlink struct {
+type SymlinkInfo struct {
 	Name   string `toml:"name"`
 	Target string `toml:"target"`
 }
 
-func (s Symlink) ExpandPaths(dotfilesPrefix string) error {
+func (s SymlinkInfo) ExpandPaths(dotfilesPrefix string) error {
 	absTargetPath, err := ExpandHomeDir(path.Join(dotfilesPrefix, s.Target))
 	if err != nil {
 		return err
@@ -29,12 +30,12 @@ func (s Symlink) ExpandPaths(dotfilesPrefix string) error {
 	return nil
 }
 
-func (s Symlink) IsTargetExists() bool {
+func (s SymlinkInfo) IsTargetExists() bool {
 	_, err := os.Stat(s.Target)
 	return !os.IsNotExist(err)
 }
 
-func (s Symlink) checkExistingSymlink() error {
+func (s SymlinkInfo) checkExistingSymlink() error {
 	if !s.IsTargetExists() {
 		return fmt.Errorf("Target %s does not exist", s.Target)
 	}
@@ -49,7 +50,7 @@ func (s Symlink) checkExistingSymlink() error {
 	return nil
 }
 
-func (s Symlink) Create() error {
+func (s SymlinkInfo) Create() error {
 	if _, err := os.Stat(s.Name); !os.IsNotExist(err) {
 		err := s.checkExistingSymlink()
 		if err != nil {
@@ -63,4 +64,36 @@ func (s Symlink) Create() error {
 		return err
 	}
 	return os.Symlink(s.Target, s.Name)
+}
+
+func processSymlinkDir(symlink SymlinkInfo) error {
+	files, err := GetFiles(symlink.Target)
+	if err != nil {
+		return err
+	}
+	for _, subTarget := range files {
+		relPath, err := filepath.Rel(symlink.Target, subTarget)
+		if err != nil {
+			return err
+		}
+		subName := path.Join(symlink.Name, relPath)
+		err = SymlinkInfo{subName, subTarget}.Create()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func processSymlink(base string, symlink SymlinkInfo) error {
+	err := symlink.ExpandPaths(base)
+	if err != nil {
+		return err
+	}
+	if isExistingDir(symlink.Target) {
+		err = processSymlinkDir(symlink)
+	} else {
+		err = symlink.Create()
+	}
+	return err
 }

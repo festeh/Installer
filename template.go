@@ -8,13 +8,13 @@ import (
 	"text/template"
 )
 
-type Template struct {
+type TemplateInfo struct {
 	Name   string `toml:"name"`
 	Target string `toml:"target"`
 	Data   map[string]string
 }
 
-func (t *Template) UnmarshalTOML(data interface{}) error {
+func (t *TemplateInfo) UnmarshalTOML(data interface{}) error {
 	dataMap := data.(map[string]interface{})
 	t.Target = dataMap["target"].(string)
 	t.Name = dataMap["name"].(string)
@@ -28,40 +28,65 @@ func (t *Template) UnmarshalTOML(data interface{}) error {
 	return nil
 }
 
-func ProcessTemplate(t *Template, dotfilesPath string, hostname string) error {
-	absTemplatePath, err := ExpandHomeDir(path.Join(dotfilesPath, t.Target))
-	rendered, err := RenderTemplate(absTemplatePath, &t.Data)
-	filename := path.Base(t.Target)
-	absTargetPath, err := ExpandHomeDir(path.Join(dotfilesPath, "hosts", hostname, "generated", filename))
-	err = os.MkdirAll(path.Dir(absTargetPath), os.ModePerm)
+type Templater struct {
+	hostname     string
+	dotfilesPath string
+}
+
+func NewTemplater(hostname string, dotfilesPath string) *Templater {
+	return &Templater{hostname: hostname, dotfilesPath: dotfilesPath}
+}
+
+func (t *Templater) getGeneratedPath(filename string) (string, error) {
+	absTargetPath := path.Join(t.dotfilesPath, "hosts", t.hostname, "generated", filename)
+	err := os.MkdirAll(path.Dir(absTargetPath), os.ModePerm)
+	if err != nil {
+		return "", err
+	}
+	return absTargetPath, nil
+}
+
+func (t *Templater) needsToUpdate(absTemplatePath string, absTargetPath string) bool {
+	if _, err := os.Stat(absTargetPath); err != nil {
+		return true
+	}
+	lastTemplateModTime, err := os.Stat(absTemplatePath)
+	if err != nil {
+		return true
+	}
+	lastTargetModTime, err := os.Stat(absTargetPath)
+	if err != nil {
+		return true
+	}
+	return lastTemplateModTime.ModTime().After(lastTargetModTime.ModTime())
+}
+
+func (t *Templater) Process(info TemplateInfo) error {
+	absTemplatePath := path.Join(t.dotfilesPath, info.Target)
+	rendered, err := RenderTemplate(absTemplatePath, &info.Data)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(absTemplatePath); err == nil {
-		lastTemplateModTime, err := os.Stat(absTemplatePath)
-		if err != nil {
-			return err
-		}
-		lastTargetModTime, err := os.Stat(absTargetPath)
-		if err != nil {
-			return err
-		}
-		if lastTemplateModTime.ModTime().Before(lastTargetModTime.ModTime()) {
-			return nil
-		}
-	}
-	log.Printf("Writing rendered template to %s\n", absTargetPath)
-	err = os.WriteFile(absTargetPath, []byte(rendered), os.ModePerm)
+	filename := path.Base(info.Target)
+	realTargetPath, err := t.getGeneratedPath(filename)
 	if err != nil {
 		return err
 	}
-	name, err := ExpandHomeDir(t.Name)
+	if !t.needsToUpdate(absTemplatePath, realTargetPath) {
+		return nil
+	}
+	log.Printf("Writing rendered template to %s\n", realTargetPath)
+	err = os.WriteFile(realTargetPath, []byte(rendered), os.ModePerm)
 	if err != nil {
 		return err
 	}
-	symlink := Symlink{
+	name, err := ExpandHomeDir(info.Name)
+	if err != nil {
+		return err
+	}
+	symlink := SymlinkInfo{
 		Name:   name,
-		Target: absTargetPath,
+		Target: realTargetPath,
 	}
 	return symlink.Create()
 }

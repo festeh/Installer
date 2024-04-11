@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"log"
-	"os"
 )
 
 func main() {
@@ -12,11 +11,13 @@ func main() {
 	hostname := flag.String("host", "", "Hostname to run command on")
 	flag.Parse()
 	if *hostname == "" {
-		log.Printf("Error: Hostname is required")
-		os.Exit(1)
+		log.Fatal("Error: Hostname is required")
 	}
-	installer := NewInstaller(*hostname)
-	err := installer.Dispatch(*command)
+	installer, err := NewManager(*hostname)
+	if err != nil {
+		log.Fatal(err)
+	}
+	err = installer.Dispatch(*command)
 	if err != nil {
 		log.Fatal(err)
 	}
