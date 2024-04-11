@@ -30,7 +30,7 @@ func (i *Manager) Dispatch(command string) error {
 		return nil
 	} else if command == "config" {
 		configurer := NewConfigurer(i.hostname, i.base)
-		return configurer.Config()
+		return configurer.Run()
 	} else {
 		return fmt.Errorf("Unknown command: %s", command)
 	}

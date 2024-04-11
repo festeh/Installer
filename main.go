@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	log.Printf("Started")
+	log.Println("Started")
 	command := flag.String("command", "config", "Either install or config")
 	hostname := flag.String("host", "", "Hostname to run command on")
 	flag.Parse()

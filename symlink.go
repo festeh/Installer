@@ -13,11 +13,8 @@ type SymlinkInfo struct {
 	Target string `toml:"target"`
 }
 
-func (s SymlinkInfo) ExpandPaths(dotfilesPrefix string) error {
-	absTargetPath, err := ExpandHomeDir(path.Join(dotfilesPrefix, s.Target))
-	if err != nil {
-		return err
-	}
+func (s *SymlinkInfo) ExpandPaths(dotfilesPrefix string) error {
+	absTargetPath := path.Join(dotfilesPrefix, s.Target)
 	absNamePath, err := ExpandHomeDir(s.Name)
 	if err != nil {
 		return err
@@ -42,7 +39,7 @@ func (s SymlinkInfo) checkExistingSymlink() error {
 	// check that Name is a symlink
 	fi, err := os.Lstat(s.Name)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error checking symlink %s: %s", s.Name, err)
 	}
 	if fi.Mode()&os.ModeSymlink == 0 {
 		return fmt.Errorf("Name %s is not a symlink", s.Name)
@@ -85,8 +82,8 @@ func processSymlinkDir(symlink SymlinkInfo) error {
 	return nil
 }
 
-func processSymlink(base string, symlink SymlinkInfo) error {
-	err := symlink.ExpandPaths(base)
+func processSymlink(dotfilesPath string, symlink SymlinkInfo) error {
+	err := symlink.ExpandPaths(dotfilesPath)
 	if err != nil {
 		return err
 	}

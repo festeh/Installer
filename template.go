@@ -50,15 +50,15 @@ func (t *Templater) needsToUpdate(absTemplatePath string, absTargetPath string) 
 	if _, err := os.Stat(absTargetPath); err != nil {
 		return true
 	}
-	lastTemplateModTime, err := os.Stat(absTemplatePath)
+	templateStat, err := os.Stat(absTemplatePath)
 	if err != nil {
 		return true
 	}
-	lastTargetModTime, err := os.Stat(absTargetPath)
+	targetStat, err := os.Stat(absTargetPath)
 	if err != nil {
 		return true
 	}
-	return lastTemplateModTime.ModTime().After(lastTargetModTime.ModTime())
+	return templateStat.ModTime().After(targetStat.ModTime())
 }
 
 func (t *Templater) Process(info TemplateInfo) error {
