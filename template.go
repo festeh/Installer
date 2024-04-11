@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"log"
+	"os"
+	"path"
 	"text/template"
 )
 
@@ -25,8 +28,46 @@ func (t *Template) UnmarshalTOML(data interface{}) error {
 	return nil
 }
 
+func ProcessTemplate(t *Template, dotfilesPath string, hostname string) error {
+	absTemplatePath, err := ExpandHomeDir(path.Join(dotfilesPath, t.Target))
+	rendered, err := RenderTemplate(absTemplatePath, &t.Data)
+	filename := path.Base(t.Target)
+	absTargetPath, err := ExpandHomeDir(path.Join(dotfilesPath, "hosts", hostname, "generated", filename))
+	err = os.MkdirAll(path.Dir(absTargetPath), os.ModePerm)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(absTemplatePath); err == nil {
+		lastTemplateModTime, err := os.Stat(absTemplatePath)
+		if err != nil {
+			return err
+		}
+		lastTargetModTime, err := os.Stat(absTargetPath)
+		if err != nil {
+			return err
+		}
+		if lastTemplateModTime.ModTime().Before(lastTargetModTime.ModTime()) {
+			return nil
+		}
+	}
+	log.Printf("Writing rendered template to %s\n", absTargetPath)
+	err = os.WriteFile(absTargetPath, []byte(rendered), os.ModePerm)
+	if err != nil {
+		return err
+	}
+	name, err := ExpandHomeDir(t.Name)
+	if err != nil {
+		return err
+	}
+	symlink := Symlink{
+		Name:   name,
+		Target: absTargetPath,
+	}
+	return symlink.Create()
+}
+
 func RenderTemplate(templatePath string, data *map[string]string) (string, error) {
-	tmpl, err := template.New("config").ParseFiles(templatePath)
+	tmpl, err := template.ParseFiles(templatePath)
 	if err != nil {
 		return "", err
 	}

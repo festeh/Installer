@@ -1,5 +1,5 @@
 [symlinks.zsh]
-namr = "zsh/zshrc"
+name = "zsh/zshrc"
 target = "~/.zshrc"
 
 [symlinks.nvim]

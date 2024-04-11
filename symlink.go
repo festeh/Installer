@@ -12,16 +12,21 @@ type Symlink struct {
 	Target string `toml:"target"`
 }
 
-func (s Symlink) ExpandPaths(dotfilesPrefix string) (Symlink, error) {
+func (s Symlink) ExpandPaths(dotfilesPrefix string) error {
 	absTargetPath, err := ExpandHomeDir(path.Join(dotfilesPrefix, s.Target))
 	if err != nil {
-		return s, err
+		return err
 	}
 	absNamePath, err := ExpandHomeDir(s.Name)
 	if err != nil {
-		return s, err
+		return err
 	}
-	return Symlink{absNamePath, absTargetPath}, nil
+	s.Name = absNamePath
+	s.Target = absTargetPath
+	if !s.IsTargetExists() {
+		return fmt.Errorf("Broken symlink: Target %s does not exist", s.Target)
+	}
+	return nil
 }
 
 func (s Symlink) IsTargetExists() bool {
