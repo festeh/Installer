@@ -73,12 +73,13 @@ func (t *Templater) Process(info TemplateInfo) error {
 		return err
 	}
 	if !t.needsToUpdate(absTemplatePath, realTargetPath) {
-		return nil
-	}
-	log.Printf("Writing rendered template to %s\n", realTargetPath)
-	err = os.WriteFile(realTargetPath, []byte(rendered), os.ModePerm)
-	if err != nil {
-		return err
+		log.Printf("Skipping %s, already up to date\n", realTargetPath)
+	} else {
+		log.Printf("Writing rendered template to %s\n", realTargetPath)
+		err = os.WriteFile(realTargetPath, []byte(rendered), os.ModePerm)
+		if err != nil {
+			return err
+		}
 	}
 	name, err := ExpandHomeDir(info.Name)
 	if err != nil {
