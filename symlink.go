@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 )
 
 type SymlinkInfo struct {
+	// Example name = "~/.config/nvim/init.vim"
 	Name   string `toml:"name"`
+	// Example target = "~/dotfiles/nvim/init.vim"
 	Target string `toml:"target"`
 }
 
 func (s *SymlinkInfo) ExpandPaths(dotfilesPrefix string) error {
-	absTargetPath := path.Join(dotfilesPrefix, s.Target)
+	absTargetPath := filepath.Join(dotfilesPrefix, s.Target)
 	absNamePath, err := ExpandHomeDir(s.Name)
 	if err != nil {
 		return err
@@ -56,41 +57,49 @@ func (s SymlinkInfo) Create() error {
 		return nil
 	}
 	log.Printf("Creating symlink %s -> %s\n", s.Name, s.Target)
-	err := os.MkdirAll(path.Dir(s.Name), 0755)
+	err := os.MkdirAll(filepath.Dir(s.Name), 0755)
 	if err != nil {
 		return err
 	}
 	return os.Symlink(s.Target, s.Name)
 }
 
-func processSymlinkDir(symlink SymlinkInfo) error {
+func getSymlinksFromDir(symlink SymlinkInfo) ([]SymlinkInfo, error) {
 	files, err := GetFiles(symlink.Target)
+	symlinks := []SymlinkInfo{}
 	if err != nil {
-		return err
+		return symlinks, err
 	}
 	for _, subTarget := range files {
 		relPath, err := filepath.Rel(symlink.Target, subTarget)
 		if err != nil {
-			return err
+			return symlinks, err
 		}
-		subName := path.Join(symlink.Name, relPath)
-		err = SymlinkInfo{subName, subTarget}.Create()
-		if err != nil {
-			return err
-		}
+		subName := filepath.Join(symlink.Name, relPath)
+		symlinks = append(symlinks, SymlinkInfo{subName, subTarget})
 	}
-	return nil
+	return symlinks, nil
 }
 
-func processSymlink(dotfilesPath string, symlink SymlinkInfo) error {
-	err := symlink.ExpandPaths(dotfilesPath)
+func (c *Configurer) processSymlink(symlink SymlinkInfo) error {
+	err := symlink.ExpandPaths(c.dotfilesPath)
 	if err != nil {
 		return err
 	}
+	symlinks := []SymlinkInfo{}
 	if isExistingDir(symlink.Target) {
-		err = processSymlinkDir(symlink)
+		symlinks, err = getSymlinksFromDir(symlink)
 	} else {
-		err = symlink.Create()
+		symlinks = append(symlinks, symlink)
+	}
+	for _, link := range symlinks {
+		if c.isIgnored(link) {
+			continue
+		}
+		err = link.Create()
+		if err != nil {
+			return err
+		}
 	}
 	return err
 }

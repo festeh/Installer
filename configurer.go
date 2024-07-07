@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/BurntSushi/toml"
 )
@@ -27,10 +28,7 @@ Templates: %v
 type Configurer struct {
 	hostname     string
 	dotfilesPath string
-}
-
-func NewConfigurer(hostname string, dotfilesPath string) *Configurer {
-	return &Configurer{hostname: hostname, dotfilesPath: dotfilesPath}
+	ignored      []string
 }
 
 func (c *Configurer) open() (io.Reader, error) {
@@ -67,6 +65,17 @@ func (c *Configurer) parse(reader io.Reader) (ConfigugureInfo, error) {
 	return config, nil
 }
 
+func (c *Configurer) isIgnored(link SymlinkInfo) bool {
+	for _, ignored := range c.ignored {
+		fullPath := filepath.Join(c.dotfilesPath, ignored)
+		if fullPath == link.Target {
+			log.Printf("Skipping symlink %s -> %s", link.Name, link.Target)
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Configurer) Run() error {
 	reader, err := c.open()
 	if err != nil {
@@ -78,11 +87,12 @@ func (c *Configurer) Run() error {
 	}
 
 	for _, symlinkInfo := range config.Symlinks {
-		err := processSymlink(c.dotfilesPath, symlinkInfo)
+		err := c.processSymlink(symlinkInfo)
 		if err != nil {
 			return err
 		}
 	}
+
 	templater := NewTemplater(c.hostname, c.dotfilesPath)
 	for _, template := range config.Templates {
 		err := templater.Process(template)
