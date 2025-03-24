@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -64,11 +65,10 @@ func (c *Configurer) parse(reader io.Reader) (ConfigugureInfo, error) {
 	}
 	return config, nil
 }
-
 func (c *Configurer) isIgnored(link SymlinkInfo) bool {
 	for _, ignored := range c.ignored {
 		fullPath := filepath.Join(c.dotfilesPath, ignored)
-		if fullPath == link.Target {
+		if strings.HasPrefix(link.Target, fullPath) {
 			log.Printf("Skipping symlink %s -> %s", link.Name, link.Target)
 			return true
 		}
