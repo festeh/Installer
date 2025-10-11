@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 )
@@ -56,7 +55,6 @@ func (s SymlinkInfo) Create() error {
 		}
 		return nil
 	}
-	log.Printf("Creating symlink %s -> %s\n", s.Name, s.Target)
 	err := os.MkdirAll(filepath.Dir(s.Name), 0755)
 	if err != nil {
 		return err

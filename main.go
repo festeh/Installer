@@ -2,24 +2,34 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"os"
 )
 
 func main() {
 	log.Println("Started")
-	command := flag.String("command", "config", "Either install or config")
-	hostname := flag.String("host", "", "Hostname to run command on")
+	var commandVal, hostnameVal string
+	flag.StringVar(&commandVal, "command", "config", "Either install or config")
+	flag.StringVar(&commandVal, "c", "config", "Either install or config (shorthand)")
+	flag.StringVar(&hostnameVal, "host", "", "Hostname to run command on (auto-detected if not provided)")
+	flag.StringVar(&hostnameVal, "h", "", "Hostname to run command on (shorthand)")
 	flag.Parse()
-	if *hostname == "" {
-		log.Fatal("Error: Hostname is required")
+	if hostnameVal == "" {
+		detectedHostname, err := os.Hostname()
+		if err != nil {
+			log.Fatal("Error: Could not detect hostname and none provided")
+		}
+		hostnameVal = detectedHostname
+		log.Printf("Using detected hostname: %s", hostnameVal)
 	}
-	installer, err := NewManager(*hostname)
+	installer, err := NewManager(hostnameVal)
 	if err != nil {
 		log.Fatal(err)
 	}
-	err = installer.Dispatch(*command)
+	err = installer.Dispatch(commandVal)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("Done")
+	fmt.Printf("\n✓ Done!\n")
 }

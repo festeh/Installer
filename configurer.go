@@ -69,7 +69,6 @@ func (c *Configurer) isIgnored(link SymlinkInfo) bool {
 	for _, ignored := range c.ignored {
 		fullPath := filepath.Join(c.dotfilesPath, ignored)
 		if strings.HasPrefix(link.Target, fullPath) {
-			log.Printf("Skipping symlink %s -> %s", link.Name, link.Target)
 			return true
 		}
 	}
@@ -86,15 +85,27 @@ func (c *Configurer) Run() error {
 		return err
 	}
 
-	for _, symlinkInfo := range config.Symlinks {
+	symlinkCount := len(config.Symlinks)
+	templateCount := len(config.Templates)
+	fmt.Printf("Processing %d symlinks and %d templates...\n", symlinkCount, templateCount)
+
+	if symlinkCount > 0 {
+		fmt.Println("\n📁 Symlinks:")
+	}
+	for name, symlinkInfo := range config.Symlinks {
+		fmt.Printf("  → %s\n", name)
 		err := c.processSymlink(symlinkInfo)
 		if err != nil {
 			return err
 		}
 	}
 
+	if templateCount > 0 {
+		fmt.Println("\n📄 Templates:")
+	}
 	templater := NewTemplater(c.hostname, c.dotfilesPath)
-	for _, template := range config.Templates {
+	for name, template := range config.Templates {
+		fmt.Printf("  → %s\n", name)
 		err := templater.Process(template)
 		if err != nil {
 			return err

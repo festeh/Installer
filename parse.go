@@ -1,8 +1,6 @@
 package main
 
 import (
-	"log"
-
 	"github.com/BurntSushi/toml"
 )
 
@@ -19,10 +17,8 @@ type InstallConfig struct {
 
 
 func ParseInstallConfig(configPath string) (InstallConfig, error) {
-	log.Printf("Parsing install config: %s\n", configPath)
 	var config InstallConfig
 	if _, err := toml.DecodeFile(configPath, &config); err != nil {
-		log.Fatal(err)
 		return config, err
 	}
 	return config, nil

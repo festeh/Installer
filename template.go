@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"log"
 	"os"
 	"path"
 	"text/template"
@@ -72,10 +71,7 @@ func (t *Templater) Process(info TemplateInfo) error {
 	if err != nil {
 		return err
 	}
-	if !t.needsToUpdate(absTemplatePath, realTargetPath) {
-		log.Printf("Skipping %s, already up to date\n", realTargetPath)
-	} else {
-		log.Printf("Writing rendered template to %s\n", realTargetPath)
+	if t.needsToUpdate(absTemplatePath, realTargetPath) {
 		err = os.WriteFile(realTargetPath, []byte(rendered), os.ModePerm)
 		if err != nil {
 			return err
