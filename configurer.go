@@ -11,6 +11,7 @@ import (
 )
 
 type ConfigugureInfo struct {
+	Inherits  string `toml:"inherits"`
 	Symlinks  map[string]SymlinkInfo
 	Templates map[string]TemplateInfo
 }
@@ -31,7 +32,11 @@ type Configurer struct {
 }
 
 func (c *Configurer) getConfigPath() string {
-	return path.Join(c.dotfilesPath, "hosts", c.hostname, "config.toml")
+	return c.getConfigPathForHost(c.hostname)
+}
+
+func (c *Configurer) getConfigPathForHost(host string) string {
+	return path.Join(c.dotfilesPath, "hosts", host, "config.toml")
 }
 
 func (c *Configurer) listAvailableHosts() []string {
@@ -84,6 +89,62 @@ func (c *Configurer) parse(data []byte) (ConfigugureInfo, error) {
 	}
 	return config, nil
 }
+
+func (c *Configurer) loadConfig() (ConfigugureInfo, error) {
+	return c.loadConfigForHost(c.hostname, make(map[string]bool))
+}
+
+func (c *Configurer) loadConfigForHost(host string, visited map[string]bool) (ConfigugureInfo, error) {
+	if visited[host] {
+		return ConfigugureInfo{}, fmt.Errorf("circular inheritance detected: %s", host)
+	}
+	visited[host] = true
+
+	configPath := c.getConfigPathForHost(host)
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ConfigugureInfo{}, fmt.Errorf("inherited config '%s' not found", host)
+		}
+		return ConfigugureInfo{}, fmt.Errorf("error reading config: %s", err)
+	}
+
+	config, err := c.parse(data)
+	if err != nil {
+		return config, err
+	}
+
+	if config.Inherits == "" {
+		return config, nil
+	}
+
+	parent, err := c.loadConfigForHost(config.Inherits, visited)
+	if err != nil {
+		return config, fmt.Errorf("error loading parent '%s': %s", config.Inherits, err)
+	}
+
+	return mergeConfigs(parent, config), nil
+}
+
+func mergeConfigs(parent, child ConfigugureInfo) ConfigugureInfo {
+	result := ConfigugureInfo{
+		Symlinks:  make(map[string]SymlinkInfo),
+		Templates: make(map[string]TemplateInfo),
+	}
+	for k, v := range parent.Symlinks {
+		result.Symlinks[k] = v
+	}
+	for k, v := range parent.Templates {
+		result.Templates[k] = v
+	}
+	for k, v := range child.Symlinks {
+		result.Symlinks[k] = v
+	}
+	for k, v := range child.Templates {
+		result.Templates[k] = v
+	}
+	return result
+}
 func (c *Configurer) isIgnored(link SymlinkInfo) bool {
 	for _, ignored := range c.ignored {
 		fullPath := filepath.Join(c.dotfilesPath, ignored)
@@ -95,11 +156,7 @@ func (c *Configurer) isIgnored(link SymlinkInfo) bool {
 }
 
 func (c *Configurer) Run() error {
-	data, err := c.readConfig()
-	if err != nil {
-		return err
-	}
-	config, err := c.parse(data)
+	config, err := c.loadConfig()
 	if err != nil {
 		return err
 	}
@@ -134,11 +191,7 @@ func (c *Configurer) Run() error {
 }
 
 func (c *Configurer) Doctor() error {
-	data, err := c.readConfig()
-	if err != nil {
-		return err
-	}
-	config, err := c.parse(data)
+	config, err := c.loadConfig()
 	if err != nil {
 		return err
 	}
@@ -233,11 +286,7 @@ func (c *Configurer) removeSymlink(name, path string) (removed bool, err error) 
 }
 
 func (c *Configurer) Uninstall() error {
-	data, err := c.readConfig()
-	if err != nil {
-		return err
-	}
-	config, err := c.parse(data)
+	config, err := c.loadConfig()
 	if err != nil {
 		return err
 	}

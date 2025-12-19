@@ -84,15 +84,14 @@ func (i *Manager) Dispatch(command string) error {
 }
 
 func (i *Manager) runInstall() error {
-	configPath := filepath.Join(i.base, "hosts", i.hostname, "install.toml")
-	fmt.Printf("Reading install config: %s\n", configPath)
-	config, err := ParseInstallConfig(configPath)
+	config, err := LoadInstallConfig(i.base, i.hostname)
 	if err != nil {
-		return fmt.Errorf("Error parsing install config: %s", err)
+		return fmt.Errorf("error loading install config: %s", err)
 	}
 
 	if len(config.Simples) == 0 {
-		return fmt.Errorf("No packages to install in %s", configPath)
+		fmt.Println("No packages to install")
+		return nil
 	}
 
 	for name, simple := range config.Simples {
