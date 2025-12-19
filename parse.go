@@ -9,9 +9,10 @@ import (
 )
 
 type Simple struct {
-	Cmd   string `toml:"cmd"`
-	Sudo  bool   `toml:"sudo" default:"false"`
-	Check string `toml:"check"`
+	Cmd       string   `toml:"cmd"`
+	Sudo      bool     `toml:"sudo" default:"false"`
+	Check     string   `toml:"check"`
+	DependsOn []string `toml:"depends_on"`
 }
 
 type InstallConfig struct {

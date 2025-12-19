@@ -94,17 +94,52 @@ func (i *Manager) runInstall() error {
 		return nil
 	}
 
-	for name, simple := range config.Simples {
+	installed := make(map[string]bool)
+	inProgress := make(map[string]bool)
+
+	var install func(name string) error
+	install = func(name string) error {
+		if installed[name] {
+			return nil
+		}
+		if inProgress[name] {
+			return fmt.Errorf("circular dependency detected: %s", name)
+		}
+
+		simple, ok := config.Simples[name]
+		if !ok {
+			return fmt.Errorf("unknown dependency: %s", name)
+		}
+
+		inProgress[name] = true
+
+		// Install dependencies first
+		for _, dep := range simple.DependsOn {
+			if err := install(dep); err != nil {
+				return err
+			}
+		}
+
+		// Now install this package
 		if CheckIsInstalled(simple.Check) {
 			fmt.Printf("✓ Skipping %s (already installed)\n", name)
-			continue
+		} else {
+			fmt.Printf("→ Installing %s...\n", name)
+			if err := ExecCmd(simple.Cmd, simple.Sudo); err != nil {
+				return fmt.Errorf("error installing %s: %s", name, err)
+			}
+			fmt.Printf("✓ Installed %s successfully\n", name)
 		}
-		fmt.Printf("→ Installing %s...\n", name)
-		err = ExecCmd(simple.Cmd, simple.Sudo)
-		if err != nil {
-			return fmt.Errorf("Error installing %s: %s", name, err)
+
+		installed[name] = true
+		inProgress[name] = false
+		return nil
+	}
+
+	for name := range config.Simples {
+		if err := install(name); err != nil {
+			return err
 		}
-		fmt.Printf("✓ Installed %s successfully\n", name)
 	}
 	return nil
 }
