@@ -97,18 +97,16 @@ func (t *Templater) Process(info TemplateInfo) error {
 
 	// Only render and write if template or config changed (or --force)
 	needsUpdate := t.opts.Force || t.needsToUpdate(absTemplatePath, realTargetPath)
-	if needsUpdate {
-		if t.opts.DryRun {
-			fmt.Printf("      would regenerate %s\n", filename)
-		} else {
-			rendered, err := RenderTemplate(absTemplatePath, &info.Data)
-			if err != nil {
-				return err
-			}
-			err = os.WriteFile(realTargetPath, []byte(rendered), os.ModePerm)
-			if err != nil {
-				return err
-			}
+	if needsUpdate && t.opts.DryRun {
+		fmt.Printf("      would regenerate %s\n", filename)
+	}
+	if needsUpdate && !t.opts.DryRun {
+		rendered, err := RenderTemplate(absTemplatePath, &info.Data)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(realTargetPath, []byte(rendered), os.ModePerm); err != nil {
+			return err
 		}
 	}
 

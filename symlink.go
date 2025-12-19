@@ -57,31 +57,32 @@ func (s SymlinkInfo) checkExistingSymlink() (needsUpdate bool, err error) {
 }
 
 func (s SymlinkInfo) Create() error {
-	if _, err := os.Stat(s.Name); !os.IsNotExist(err) {
-		needsUpdate, err := s.checkExistingSymlink()
-		if err != nil {
+	// New symlink
+	if _, err := os.Stat(s.Name); os.IsNotExist(err) {
+		if s.dryRun {
+			fmt.Printf("      would create symlink: %s\n", s.Name)
+			return nil
+		}
+		if err := os.MkdirAll(filepath.Dir(s.Name), 0755); err != nil {
 			return err
 		}
-		if needsUpdate {
-			if s.dryRun {
-				fmt.Printf("      would update symlink: %s\n", s.Name)
-				return nil
-			}
-			// Remove old symlink and create new one
-			if err := os.Remove(s.Name); err != nil {
-				return fmt.Errorf("Error removing old symlink %s: %s", s.Name, err)
-			}
-			return os.Symlink(s.Target, s.Name)
-		}
+		return os.Symlink(s.Target, s.Name)
+	}
+
+	// Existing - check if update needed
+	needsUpdate, err := s.checkExistingSymlink()
+	if err != nil {
+		return err
+	}
+	if !needsUpdate {
 		return nil
 	}
 	if s.dryRun {
-		fmt.Printf("      would create symlink: %s\n", s.Name)
+		fmt.Printf("      would update symlink: %s\n", s.Name)
 		return nil
 	}
-	err := os.MkdirAll(filepath.Dir(s.Name), 0755)
-	if err != nil {
-		return err
+	if err := os.Remove(s.Name); err != nil {
+		return fmt.Errorf("Error removing old symlink %s: %s", s.Name, err)
 	}
 	return os.Symlink(s.Target, s.Name)
 }

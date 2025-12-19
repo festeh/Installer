@@ -4,9 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
+	"os/user"
 	"path/filepath"
-	"strings"
 )
 
 type Options struct {
@@ -35,17 +34,28 @@ func ReadGitignore(path string) ([]string, error) {
 	return lines, nil
 }
 
+func getHomeDir() (string, error) {
+	if home := os.Getenv("HOME"); home != "" {
+		return home, nil
+	}
+	usr, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("could not determine home directory: %s", err)
+	}
+	return usr.HomeDir, nil
+}
+
 func NewManager(hostname string, opts Options) (*Manager, error) {
 	if err := IsHostnameOk(hostname); err != nil {
 		return nil, err
 	}
-	base := filepath.Join(os.Getenv("HOME"), "dotfiles")
-	expanded, err := ExpandHomeDir(base)
+	home, err := getHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	ignored, err := ReadGitignore(filepath.Join(expanded, ".gitignore"))
-	return &Manager{hostname: hostname, base: expanded, ignored: ignored, opts: opts}, nil
+	base := filepath.Join(home, "dotfiles")
+	ignored, _ := ReadGitignore(filepath.Join(base, ".gitignore")) // ignore error, .gitignore is optional
+	return &Manager{hostname: hostname, base: base, ignored: ignored, opts: opts}, nil
 }
 
 func (i *Manager) Dispatch(command string) error {
@@ -104,13 +114,12 @@ func IsHostnameOk(hostname string) error {
 	if hostname == "common" {
 		return nil
 	}
-	cmd := exec.Command("hostname")
-	out, err := cmd.Output()
+	systemHostname, err := os.Hostname()
 	if err != nil {
-		return err
+		return fmt.Errorf("could not detect system hostname: %s", err)
 	}
-	if strings.TrimSpace(string(out)) != hostname {
-		return fmt.Errorf("Hostname does not match, expected %s, got %s", hostname, string(out))
+	if systemHostname != hostname {
+		return fmt.Errorf("hostname mismatch: expected %s, got %s", hostname, systemHostname)
 	}
 	return nil
 }

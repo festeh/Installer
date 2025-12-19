@@ -34,11 +34,37 @@ func (c *Configurer) getConfigPath() string {
 	return path.Join(c.dotfilesPath, "hosts", c.hostname, "config.toml")
 }
 
+func (c *Configurer) listAvailableHosts() []string {
+	hostsDir := path.Join(c.dotfilesPath, "hosts")
+	entries, err := os.ReadDir(hostsDir)
+	if err != nil {
+		return nil
+	}
+	var hosts []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		configPath := path.Join(hostsDir, entry.Name(), "config.toml")
+		if _, err := os.Stat(configPath); err == nil {
+			hosts = append(hosts, entry.Name())
+		}
+	}
+	return hosts
+}
+
 func (c *Configurer) readConfig() ([]byte, error) {
 	configPath := c.getConfigPath()
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("Error reading config file: %s", err)
+		if os.IsNotExist(err) {
+			hosts := c.listAvailableHosts()
+			if len(hosts) > 0 {
+				return nil, fmt.Errorf("no config found for host '%s'\nAvailable hosts: %v", c.hostname, hosts)
+			}
+			return nil, fmt.Errorf("no config found for host '%s' (no hosts configured)", c.hostname)
+		}
+		return nil, fmt.Errorf("error reading config file: %s", err)
 	}
 	return data, nil
 }
@@ -178,6 +204,34 @@ func (c *Configurer) Doctor() error {
 	return nil
 }
 
+func (c *Configurer) removeSymlink(name, path string) (removed bool, err error) {
+	expandedPath, err := ExpandHomeDir(path)
+	if err != nil {
+		return false, err
+	}
+	fi, err := os.Lstat(expandedPath)
+	if os.IsNotExist(err) {
+		fmt.Printf("  - %s: already absent\n", name)
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("error checking %s: %s", name, err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		fmt.Printf("  ⚠ %s: not a symlink, skipping\n", name)
+		return false, nil
+	}
+	if c.opts.DryRun {
+		fmt.Printf("  → %s: would remove\n", name)
+		return true, nil
+	}
+	if err := os.Remove(expandedPath); err != nil {
+		return false, fmt.Errorf("error removing %s: %s", name, err)
+	}
+	fmt.Printf("  ✓ %s: removed\n", name)
+	return true, nil
+}
+
 func (c *Configurer) Uninstall() error {
 	data, err := c.readConfig()
 	if err != nil {
@@ -191,61 +245,22 @@ func (c *Configurer) Uninstall() error {
 	removed := 0
 	fmt.Println("Removing symlinks...")
 	for name, symlinkInfo := range config.Symlinks {
-		expandedName, err := ExpandHomeDir(symlinkInfo.Name)
+		ok, err := c.removeSymlink(name, symlinkInfo.Name)
 		if err != nil {
 			return err
 		}
-		// Check if it exists and is a symlink
-		fi, err := os.Lstat(expandedName)
-		if os.IsNotExist(err) {
-			fmt.Printf("  - %s: already absent\n", name)
-			continue
+		if ok {
+			removed++
 		}
-		if err != nil {
-			return fmt.Errorf("error checking %s: %s", name, err)
-		}
-		if fi.Mode()&os.ModeSymlink == 0 {
-			fmt.Printf("  ⚠ %s: not a symlink, skipping\n", name)
-			continue
-		}
-		if c.opts.DryRun {
-			fmt.Printf("  → %s: would remove\n", name)
-		} else {
-			if err := os.Remove(expandedName); err != nil {
-				return fmt.Errorf("error removing %s: %s", name, err)
-			}
-			fmt.Printf("  ✓ %s: removed\n", name)
-		}
-		removed++
 	}
-
-	// Also handle templates (they create symlinks too)
 	for name, tmplInfo := range config.Templates {
-		expandedName, err := ExpandHomeDir(tmplInfo.Name)
+		ok, err := c.removeSymlink(name, tmplInfo.Name)
 		if err != nil {
 			return err
 		}
-		fi, err := os.Lstat(expandedName)
-		if os.IsNotExist(err) {
-			fmt.Printf("  - %s: already absent\n", name)
-			continue
+		if ok {
+			removed++
 		}
-		if err != nil {
-			return fmt.Errorf("error checking %s: %s", name, err)
-		}
-		if fi.Mode()&os.ModeSymlink == 0 {
-			fmt.Printf("  ⚠ %s: not a symlink, skipping\n", name)
-			continue
-		}
-		if c.opts.DryRun {
-			fmt.Printf("  → %s: would remove\n", name)
-		} else {
-			if err := os.Remove(expandedName); err != nil {
-				return fmt.Errorf("error removing %s: %s", name, err)
-			}
-			fmt.Printf("  ✓ %s: removed\n", name)
-		}
-		removed++
 	}
 
 	fmt.Printf("\nRemoved %d symlinks\n", removed)
