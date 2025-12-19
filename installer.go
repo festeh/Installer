@@ -39,23 +39,3 @@ func CheckIsInstalled(check string) bool {
 	return err == nil
 }
 
-// func InstallFunc(base string, hostname string) error {
-// 	configPath, err := GetConfigPath(base, hostname, "install.toml")
-// 	if err != nil {
-// 		log.Printf("Error getting install path: %s", err)
-// 		return err
-// 	}
-// 	config, err := ParseInstallConfig(configPath)
-// 	for _, simple := range config.Simples {
-// 		if CheckIsInstalled(simple.Check) {
-// 			log.Printf("Skipping install of %s, already installed", simple.Check)
-// 			continue
-// 		}
-// 		err = ExecCmd(simple.Cmd, simple.Sudo)
-// 		if err != nil {
-// 			return err
-// 		}
-// 		fmt.Println("")
-// 	}
-// 	return nil
-// }

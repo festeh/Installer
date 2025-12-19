@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,30 +27,26 @@ type Configurer struct {
 	hostname     string
 	dotfilesPath string
 	ignored      []string
+	opts         Options
 }
 
-func (c *Configurer) open() (io.Reader, error) {
-	configFilename := "config.toml"
-	configPath := path.Join(c.dotfilesPath, "hosts", c.hostname, configFilename)
-	configFile, err := os.Open(configPath)
+func (c *Configurer) getConfigPath() string {
+	return path.Join(c.dotfilesPath, "hosts", c.hostname, "config.toml")
+}
+
+func (c *Configurer) readConfig() ([]byte, error) {
+	configPath := c.getConfigPath()
+	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("Error opening config file: %s", err)
+		return nil, fmt.Errorf("Error reading config file: %s", err)
 	}
-	fileReader := bufio.NewReader(configFile)
-	return fileReader, nil
+	return data, nil
 }
 
-func (c *Configurer) parse(reader io.Reader) (ConfigugureInfo, error) {
+func (c *Configurer) parse(data []byte) (ConfigugureInfo, error) {
 	var config ConfigugureInfo
-	// read the reader into a string
-	data, err := io.ReadAll(reader)
-	if err != nil {
-		return config, fmt.Errorf("Error reading config file: %s", err)
-	}
-	buf := string(data)
-	if _, err := toml.Decode(buf, &config); err != nil {
-		log.Fatal(err)
-		return config, err
+	if _, err := toml.Decode(string(data), &config); err != nil {
+		return config, fmt.Errorf("Error parsing config: %s", err)
 	}
 	for k, v := range config.Symlinks {
 		if v.Name == "" {
@@ -76,11 +69,11 @@ func (c *Configurer) isIgnored(link SymlinkInfo) bool {
 }
 
 func (c *Configurer) Run() error {
-	reader, err := c.open()
+	data, err := c.readConfig()
 	if err != nil {
 		return err
 	}
-	config, err := c.parse(reader)
+	config, err := c.parse(data)
 	if err != nil {
 		return err
 	}
@@ -103,7 +96,7 @@ func (c *Configurer) Run() error {
 	if templateCount > 0 {
 		fmt.Println("\n📄 Templates:")
 	}
-	templater := NewTemplater(c.hostname, c.dotfilesPath)
+	templater := NewTemplater(c.hostname, c.dotfilesPath, c.getConfigPath(), c.opts)
 	for name, template := range config.Templates {
 		fmt.Printf("  → %s\n", name)
 		err := templater.Process(template)
@@ -111,5 +104,150 @@ func (c *Configurer) Run() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (c *Configurer) Doctor() error {
+	data, err := c.readConfig()
+	if err != nil {
+		return err
+	}
+	config, err := c.parse(data)
+	if err != nil {
+		return err
+	}
+
+	healthy := 0
+	broken := 0
+	missing := 0
+
+	fmt.Println("Checking symlinks...")
+	for name, symlinkInfo := range config.Symlinks {
+		err := symlinkInfo.ExpandPaths(c.dotfilesPath)
+		if err != nil {
+			fmt.Printf("  ✗ %s: %s\n", name, err)
+			broken++
+			continue
+		}
+		// Check if symlink exists
+		fi, err := os.Lstat(symlinkInfo.Name)
+		if os.IsNotExist(err) {
+			fmt.Printf("  ○ %s: not created yet\n", name)
+			missing++
+			continue
+		}
+		if err != nil {
+			fmt.Printf("  ✗ %s: %s\n", name, err)
+			broken++
+			continue
+		}
+		// Check if it's a symlink
+		if fi.Mode()&os.ModeSymlink == 0 {
+			fmt.Printf("  ✗ %s: exists but is not a symlink\n", name)
+			broken++
+			continue
+		}
+		// Check target
+		currentTarget, err := os.Readlink(symlinkInfo.Name)
+		if err != nil {
+			fmt.Printf("  ✗ %s: cannot read symlink target\n", name)
+			broken++
+			continue
+		}
+		if currentTarget != symlinkInfo.Target {
+			fmt.Printf("  ⚠ %s: points to wrong target\n", name)
+			fmt.Printf("      expected: %s\n", symlinkInfo.Target)
+			fmt.Printf("      actual:   %s\n", currentTarget)
+			broken++
+			continue
+		}
+		// Check if target exists
+		if _, err := os.Stat(symlinkInfo.Target); os.IsNotExist(err) {
+			fmt.Printf("  ✗ %s: target does not exist\n", name)
+			broken++
+			continue
+		}
+		fmt.Printf("  ✓ %s\n", name)
+		healthy++
+	}
+
+	fmt.Printf("\nSummary: %d healthy, %d broken, %d missing\n", healthy, broken, missing)
+	if broken > 0 {
+		return fmt.Errorf("%d symlinks need attention", broken)
+	}
+	return nil
+}
+
+func (c *Configurer) Uninstall() error {
+	data, err := c.readConfig()
+	if err != nil {
+		return err
+	}
+	config, err := c.parse(data)
+	if err != nil {
+		return err
+	}
+
+	removed := 0
+	fmt.Println("Removing symlinks...")
+	for name, symlinkInfo := range config.Symlinks {
+		expandedName, err := ExpandHomeDir(symlinkInfo.Name)
+		if err != nil {
+			return err
+		}
+		// Check if it exists and is a symlink
+		fi, err := os.Lstat(expandedName)
+		if os.IsNotExist(err) {
+			fmt.Printf("  - %s: already absent\n", name)
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("error checking %s: %s", name, err)
+		}
+		if fi.Mode()&os.ModeSymlink == 0 {
+			fmt.Printf("  ⚠ %s: not a symlink, skipping\n", name)
+			continue
+		}
+		if c.opts.DryRun {
+			fmt.Printf("  → %s: would remove\n", name)
+		} else {
+			if err := os.Remove(expandedName); err != nil {
+				return fmt.Errorf("error removing %s: %s", name, err)
+			}
+			fmt.Printf("  ✓ %s: removed\n", name)
+		}
+		removed++
+	}
+
+	// Also handle templates (they create symlinks too)
+	for name, tmplInfo := range config.Templates {
+		expandedName, err := ExpandHomeDir(tmplInfo.Name)
+		if err != nil {
+			return err
+		}
+		fi, err := os.Lstat(expandedName)
+		if os.IsNotExist(err) {
+			fmt.Printf("  - %s: already absent\n", name)
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("error checking %s: %s", name, err)
+		}
+		if fi.Mode()&os.ModeSymlink == 0 {
+			fmt.Printf("  ⚠ %s: not a symlink, skipping\n", name)
+			continue
+		}
+		if c.opts.DryRun {
+			fmt.Printf("  → %s: would remove\n", name)
+		} else {
+			if err := os.Remove(expandedName); err != nil {
+				return fmt.Errorf("error removing %s: %s", name, err)
+			}
+			fmt.Printf("  ✓ %s: removed\n", name)
+		}
+		removed++
+	}
+
+	fmt.Printf("\nRemoved %d symlinks\n", removed)
 	return nil
 }

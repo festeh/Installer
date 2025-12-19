@@ -14,6 +14,9 @@ func RemoveFile(path string) error {
 func GetFiles(target string) ([]string, error) {
 	files := []string{}
 	err := filepath.Walk(target, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
 		if f.IsDir() {
 			return nil
 		}

@@ -9,10 +9,16 @@ import (
 	"strings"
 )
 
+type Options struct {
+	DryRun bool
+	Force  bool
+}
+
 type Manager struct {
 	base     string
 	hostname string
 	ignored  []string
+	opts     Options
 }
 
 func ReadGitignore(path string) ([]string, error) {
@@ -29,7 +35,7 @@ func ReadGitignore(path string) ([]string, error) {
 	return lines, nil
 }
 
-func NewManager(hostname string) (*Manager, error) {
+func NewManager(hostname string, opts Options) (*Manager, error) {
 	if err := IsHostnameOk(hostname); err != nil {
 		return nil, err
 	}
@@ -39,19 +45,31 @@ func NewManager(hostname string) (*Manager, error) {
 		return nil, err
 	}
 	ignored, err := ReadGitignore(filepath.Join(expanded, ".gitignore"))
-	return &Manager{hostname: hostname, base: expanded, ignored: ignored}, nil
+	return &Manager{hostname: hostname, base: expanded, ignored: ignored, opts: opts}, nil
 }
 
 func (i *Manager) Dispatch(command string) error {
-	if command == "install" {
+	if i.opts.DryRun {
+		fmt.Println("🔍 DRY RUN MODE - no changes will be made\n")
+	}
+	switch command {
+	case "install":
 		fmt.Printf("\n📦 Running install for host: %s\n\n", i.hostname)
 		return i.runInstall()
-	} else if command == "config" {
+	case "config":
 		fmt.Printf("\n⚙️  Running config for host: %s\n\n", i.hostname)
-		configurer := &Configurer{hostname: i.hostname, dotfilesPath: i.base, ignored: i.ignored}
+		configurer := &Configurer{hostname: i.hostname, dotfilesPath: i.base, ignored: i.ignored, opts: i.opts}
 		return configurer.Run()
-	} else {
-		return fmt.Errorf("Unknown command: %s", command)
+	case "doctor":
+		fmt.Printf("\n🩺 Running doctor for host: %s\n\n", i.hostname)
+		configurer := &Configurer{hostname: i.hostname, dotfilesPath: i.base, ignored: i.ignored, opts: i.opts}
+		return configurer.Doctor()
+	case "uninstall":
+		fmt.Printf("\n🗑️  Running uninstall for host: %s\n\n", i.hostname)
+		configurer := &Configurer{hostname: i.hostname, dotfilesPath: i.base, ignored: i.ignored, opts: i.opts}
+		return configurer.Uninstall()
+	default:
+		return fmt.Errorf("Unknown command: %s. Available: config, install, doctor, uninstall", command)
 	}
 }
 

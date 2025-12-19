@@ -11,6 +11,7 @@ type SymlinkInfo struct {
 	Name   string `toml:"name"`
 	// Example target = "~/dotfiles/nvim/init.vim"
 	Target string `toml:"target"`
+	dryRun bool
 }
 
 func (s *SymlinkInfo) ExpandPaths(dotfilesPrefix string) error {
@@ -32,27 +33,50 @@ func (s SymlinkInfo) IsTargetExists() bool {
 	return !os.IsNotExist(err)
 }
 
-func (s SymlinkInfo) checkExistingSymlink() error {
+func (s SymlinkInfo) checkExistingSymlink() (needsUpdate bool, err error) {
 	if !s.IsTargetExists() {
-		return fmt.Errorf("Target %s does not exist", s.Target)
+		return false, fmt.Errorf("Target %s does not exist", s.Target)
 	}
 	// check that Name is a symlink
 	fi, err := os.Lstat(s.Name)
 	if err != nil {
-		return fmt.Errorf("Error checking symlink %s: %s", s.Name, err)
+		return false, fmt.Errorf("Error checking symlink %s: %s", s.Name, err)
 	}
 	if fi.Mode()&os.ModeSymlink == 0 {
-		return fmt.Errorf("Name %s is not a symlink", s.Name)
+		return false, fmt.Errorf("Name %s is not a symlink", s.Name)
 	}
-	return nil
+	// check if symlink points to correct target
+	currentTarget, err := os.Readlink(s.Name)
+	if err != nil {
+		return false, fmt.Errorf("Error reading symlink %s: %s", s.Name, err)
+	}
+	if currentTarget != s.Target {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s SymlinkInfo) Create() error {
 	if _, err := os.Stat(s.Name); !os.IsNotExist(err) {
-		err := s.checkExistingSymlink()
+		needsUpdate, err := s.checkExistingSymlink()
 		if err != nil {
 			return err
 		}
+		if needsUpdate {
+			if s.dryRun {
+				fmt.Printf("      would update symlink: %s\n", s.Name)
+				return nil
+			}
+			// Remove old symlink and create new one
+			if err := os.Remove(s.Name); err != nil {
+				return fmt.Errorf("Error removing old symlink %s: %s", s.Name, err)
+			}
+			return os.Symlink(s.Target, s.Name)
+		}
+		return nil
+	}
+	if s.dryRun {
+		fmt.Printf("      would create symlink: %s\n", s.Name)
 		return nil
 	}
 	err := os.MkdirAll(filepath.Dir(s.Name), 0755)
@@ -74,12 +98,13 @@ func getSymlinksFromDir(symlink SymlinkInfo) ([]SymlinkInfo, error) {
 			return symlinks, err
 		}
 		subName := filepath.Join(symlink.Name, relPath)
-		symlinks = append(symlinks, SymlinkInfo{subName, subTarget})
+		symlinks = append(symlinks, SymlinkInfo{Name: subName, Target: subTarget, dryRun: symlink.dryRun})
 	}
 	return symlinks, nil
 }
 
 func (c *Configurer) processSymlink(symlink SymlinkInfo) error {
+	symlink.dryRun = c.opts.DryRun
 	err := symlink.ExpandPaths(c.dotfilesPath)
 	if err != nil {
 		return err
