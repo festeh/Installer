@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 )
 
 type Options struct {
@@ -20,6 +21,9 @@ type Manager struct {
 	opts     Options
 }
 
+// ReadGitignore returns the ignore patterns of a .gitignore file.
+// Blank lines, comments and negations ("!pattern") are dropped; re-including
+// a previously ignored path is not supported.
 func ReadGitignore(path string) ([]string, error) {
 	gitignore, err := os.Open(path)
 	if err != nil {
@@ -27,11 +31,15 @@ func ReadGitignore(path string) ([]string, error) {
 	}
 	defer gitignore.Close()
 	scanner := bufio.NewScanner(gitignore)
-	var lines []string
+	var patterns []string
 	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "!") {
+			continue
+		}
+		patterns = append(patterns, line)
 	}
-	return lines, nil
+	return patterns, scanner.Err()
 }
 
 func getHomeDir() (string, error) {
@@ -60,7 +68,7 @@ func NewManager(hostname string, opts Options) (*Manager, error) {
 
 func (i *Manager) Dispatch(command string) error {
 	if i.opts.DryRun {
-		fmt.Println("🔍 DRY RUN MODE - no changes will be made\n")
+		fmt.Print("🔍 DRY RUN MODE - no changes will be made\n\n")
 	}
 	switch command {
 	case "install":

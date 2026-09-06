@@ -145,11 +145,42 @@ func mergeConfigs(parent, child ConfigugureInfo) ConfigugureInfo {
 	}
 	return result
 }
+
+// isIgnored reports whether a symlink target is covered by one of the
+// .gitignore patterns of the dotfiles repository.
 func (c *Configurer) isIgnored(link SymlinkInfo) bool {
-	for _, ignored := range c.ignored {
-		fullPath := filepath.Join(c.dotfilesPath, ignored)
-		if strings.HasPrefix(link.Target, fullPath) {
-			return true
+	rel, err := filepath.Rel(c.dotfilesPath, link.Target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		return false
+	}
+	return matchesGitignore(c.ignored, rel)
+}
+
+// matchesGitignore applies the common gitignore rules to a path relative to
+// the repository root: a pattern without a slash matches a file or directory
+// name at any depth ("node_modules" hides ags/node_modules/...), a pattern
+// with a slash is anchored to the root ("ags/types", "/.aider*"), and a
+// trailing slash is accepted as a directory marker. Globs use filepath.Match.
+func matchesGitignore(patterns []string, rel string) bool {
+	components := strings.Split(filepath.ToSlash(rel), "/")
+	for _, pattern := range patterns {
+		pattern = strings.TrimSuffix(pattern, "/")
+		if pattern == "" {
+			continue
+		}
+		if !strings.Contains(pattern, "/") {
+			for _, component := range components {
+				if ok, _ := filepath.Match(pattern, component); ok {
+					return true
+				}
+			}
+			continue
+		}
+		pattern = strings.TrimPrefix(pattern, "/")
+		for i := 1; i <= len(components); i++ {
+			if ok, _ := filepath.Match(pattern, strings.Join(components[:i], "/")); ok {
+				return true
+			}
 		}
 	}
 	return false
@@ -165,14 +196,18 @@ func (c *Configurer) Run() error {
 	templateCount := len(config.Templates)
 	fmt.Printf("Processing %d symlinks and %d templates...\n", symlinkCount, templateCount)
 
+	// A single broken entry must not stop the rest of the run: report it,
+	// keep going, and fail at the end so the exit code still reflects it.
+	var failed []string
+
 	if symlinkCount > 0 {
 		fmt.Println("\n📁 Symlinks:")
 	}
 	for name, symlinkInfo := range config.Symlinks {
 		fmt.Printf("  → %s\n", name)
-		err := c.processSymlink(symlinkInfo)
-		if err != nil {
-			return err
+		if err := c.processSymlink(symlinkInfo); err != nil {
+			fmt.Printf("  ✗ %s: %s\n", name, err)
+			failed = append(failed, "symlink "+name)
 		}
 	}
 
@@ -182,10 +217,14 @@ func (c *Configurer) Run() error {
 	templater := NewTemplater(c.hostname, c.dotfilesPath, c.getConfigPath(), c.opts)
 	for name, template := range config.Templates {
 		fmt.Printf("  → %s\n", name)
-		err := templater.Process(template)
-		if err != nil {
-			return err
+		if err := templater.Process(template); err != nil {
+			fmt.Printf("  ✗ %s: %s\n", name, err)
+			failed = append(failed, "template "+name)
 		}
+	}
+
+	if len(failed) > 0 {
+		return fmt.Errorf("%d of %d entries failed: %s", len(failed), symlinkCount+templateCount, strings.Join(failed, ", "))
 	}
 	return nil
 }

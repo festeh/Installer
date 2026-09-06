@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,7 +9,7 @@ import (
 
 type SymlinkInfo struct {
 	// Example name = "~/.config/nvim/init.vim"
-	Name   string `toml:"name"`
+	Name string `toml:"name"`
 	// Example target = "~/dotfiles/nvim/init.vim"
 	Target string `toml:"target"`
 	dryRun bool
@@ -43,6 +44,12 @@ func (s SymlinkInfo) checkExistingSymlink() (needsUpdate bool, err error) {
 		return false, fmt.Errorf("Error checking symlink %s: %s", s.Name, err)
 	}
 	if fi.Mode()&os.ModeSymlink == 0 {
+		if s.resolvesToTarget() {
+			// Reached through a symlinked parent directory
+			// (e.g. ~/.config/ags/type-shims -> dotfiles/ags/type-shims), so the
+			// file already lives where it should. Nothing to do.
+			return false, nil
+		}
 		return false, fmt.Errorf("Name %s is not a symlink", s.Name)
 	}
 	// check if symlink points to correct target
@@ -54,6 +61,19 @@ func (s SymlinkInfo) checkExistingSymlink() (needsUpdate bool, err error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// resolvesToTarget reports whether following every symlink in Name ends at Target.
+func (s SymlinkInfo) resolvesToTarget() bool {
+	resolvedName, err := filepath.EvalSymlinks(s.Name)
+	if err != nil {
+		return false
+	}
+	resolvedTarget, err := filepath.EvalSymlinks(s.Target)
+	if err != nil {
+		return false
+	}
+	return resolvedName == resolvedTarget
 }
 
 func (s SymlinkInfo) Create() error {
@@ -104,26 +124,29 @@ func getSymlinksFromDir(symlink SymlinkInfo) ([]SymlinkInfo, error) {
 	return symlinks, nil
 }
 
+// processSymlink links one config entry. A directory target is linked file by
+// file; every file is attempted even if some fail, and the failures are
+// returned together.
 func (c *Configurer) processSymlink(symlink SymlinkInfo) error {
 	symlink.dryRun = c.opts.DryRun
-	err := symlink.ExpandPaths(c.dotfilesPath)
-	if err != nil {
+	if err := symlink.ExpandPaths(c.dotfilesPath); err != nil {
 		return err
 	}
-	symlinks := []SymlinkInfo{}
+	symlinks := []SymlinkInfo{symlink}
 	if isExistingDir(symlink.Target) {
-		symlinks, err = getSymlinksFromDir(symlink)
-	} else {
-		symlinks = append(symlinks, symlink)
+		var err error
+		if symlinks, err = getSymlinksFromDir(symlink); err != nil {
+			return err
+		}
 	}
+	var failures []error
 	for _, link := range symlinks {
 		if c.isIgnored(link) {
 			continue
 		}
-		err = link.Create()
-		if err != nil {
-			return err
+		if err := link.Create(); err != nil {
+			failures = append(failures, err)
 		}
 	}
-	return err
+	return errors.Join(failures...)
 }
